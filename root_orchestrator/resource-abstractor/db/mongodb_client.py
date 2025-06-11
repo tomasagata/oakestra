@@ -11,13 +11,15 @@ MONGO_ADDR_CLUSTERS = f"{MONGO_BASE_ADDR}/clusters"
 MONGO_ADDR_JOBS = f"{MONGO_BASE_ADDR}/jobs"
 MONGO_ADDR_HOOKS = f"{MONGO_BASE_ADDR}/hooks"
 MONGO_ADDR_CUSTOM_RESOURCES = f"{MONGO_BASE_ADDR}/custom_resources"
+MONGO_ADDR_NETWORK_SERVICES = f"{MONGO_BASE_ADDR}/network_services"
 
 db_custom_resources = None
 mongo_meta_data = None
 mongo_hooks = None
-mongo_clusers = None
+mongo_clusters = None
 mongo_apps = None
 mongo_jobs = None
+mongo_netservices = None
 
 app = None
 
@@ -25,6 +27,7 @@ app = None
 def mongo_init(flask_app):
     global db_custom_resources, mongo_meta_data
     global mongo_clusters, mongo_jobs, mongo_apps, mongo_hooks
+    global mongo_netservices
     global app
 
     app = flask_app
@@ -36,6 +39,7 @@ def mongo_init(flask_app):
     mongo_clusters = PyMongo(app, uri=MONGO_ADDR_CLUSTERS).db["clusters"]
     mongo_apps = PyMongo(app, uri=MONGO_ADDR_JOBS).db["apps"]
     mongo_jobs = PyMongo(app, uri=MONGO_ADDR_JOBS).db["jobs"]
+    mongo_netservices = PyMongo(app, uri=MONGO_ADDR_NETWORK_SERVICES).db["netservices"]
 
     db_custom_resources = PyMongo(app, uri=MONGO_ADDR_CUSTOM_RESOURCES)
     mongo_meta_data = db_custom_resources.db["meta_data"]

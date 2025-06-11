@@ -9,7 +9,7 @@ services:
 
   # System Manager REST API of Root Orchestrator
   system_manager:
-    image: system_manager
+    image: tomasagata/oak-system-manager
     build: system-manager-python/
     hostname: system_manager
     container_name: system_manager
@@ -167,7 +167,7 @@ services:
     logging: *default-logging
 
   resource_abstractor:
-    image: resource_abstractor
+    image: tomasagata/oak-resource-abstractor
     build: resource-abstractor/
     container_name: resource_abstractor
     labels:

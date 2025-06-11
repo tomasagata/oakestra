@@ -1,3 +1,44 @@
+ns_schema = {
+    "type": "object",
+    "properties": {
+        "nsID": {"type": "string"},
+        "ns_name": {"type": "string"},
+        "ns_desc": {"type": "string"},
+        "cluster": {"type": "string"},
+        "forwarding_graphs": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "graph_name": {"type": "string"},
+                    "links": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "linkID": {"type": "string"},
+                                "connection_points": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "microservice_ref": {"type": "string"},
+                                        },
+                                        "required": []
+                                    }
+                                }
+                            },
+                            "required": []
+                        }
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    "required": []
+}
+
 sla_schema = {
     "type": "object",
     "properties": {
@@ -40,6 +81,7 @@ sla_schema = {
                                 "code": {"type": "string"},
                                 "state": {"type": "string"},
                                 "port": {"type": "string"},
+                                "ns_ref": {"type": "string"},
                                 "one_shot": {"type": "boolean", "default": False},
                                 "privileged": {"type": "boolean", "default": False},
                                 "cmd": {
@@ -153,6 +195,7 @@ sla_schema = {
                         },
                         "exclusiveMinimum": 0,
                     },
+                    "network_service": ns_schema,
                 },
                 "required": [
                     "application_name",

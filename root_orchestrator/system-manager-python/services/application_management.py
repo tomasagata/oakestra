@@ -3,6 +3,7 @@ import traceback
 
 from resource_abstractor_client import app_operations
 from services.service_management import create_services_of_app, delete_service
+from services.net_service_management import create_network_services_of_app, delete_net_service
 from sla.versioned_sla_parser import SLAFormatError, parse_sla_json
 
 
@@ -39,27 +40,45 @@ def register_app(applications, userid):
             return {"message": "error during the registration of the application"}, 500
 
         app_id = app.get("_id")
+        if not app_id: continue
+
         # register microservices as well if any
-        if app_id:
-            if len(microservices) > 0:
-                try:
-                    application["microservices"] = microservices
-                    application["applicationID"] = app_id
-                    result, status = create_services_of_app(
-                        userid,
-                        {
-                            "sla_version": applications["sla_version"],
-                            "customerID": userid,
-                            "applications": [application],
-                        },
-                    )
-                    if status != 200:
-                        delete_app(app_id, userid)
-                        return result, status
-                except Exception:
-                    print(traceback.format_exc())
-                    delete_app(app_id, userid)
-                    return {"message": "error during the registration of the microservices"}, 500
+        if len(microservices) == 0: continue
+
+        try:
+            application["microservices"] = microservices
+            application["applicationID"] = app_id
+            result, status = create_services_of_app(
+                userid,
+                {
+                    "sla_version": applications["sla_version"],
+                    "customerID": userid,
+                    "applications": [application],
+                },
+            )
+            if status != 200:
+                delete_app(app_id, userid)
+                return result, status
+        except Exception:
+            print(traceback.format_exc())
+            delete_app(app_id, userid)
+            return {"message": "error during the registration of the microservices"}, 500
+        
+        net_service = app.get("net_service")
+        if not net_service: continue
+
+        try:
+            result, status = create_network_services_of_app(
+                userid,
+                application
+            )
+            if status != 200:
+                delete_app(app_id, userid)
+                return result, status
+        except Exception:
+            print(traceback.format_exc())
+            delete_app(app_id, userid)
+            return {"message": "error during the registration of the network services"}, 500
 
     return get_user_apps(userid)
 
@@ -83,6 +102,9 @@ def delete_app(appid, userid):
 
     for service_id in application.get("microservices"):
         delete_service(userid, service_id)
+
+    net_service_id = application.get('net_service')
+    if net_service_id: delete_net_service(net_service_id)
 
     return app_operations.delete_app(appid)
 
