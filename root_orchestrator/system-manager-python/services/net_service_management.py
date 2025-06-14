@@ -2,7 +2,7 @@
 import io
 import re
 import yaml
-from libraries.resource_abstractor_client.resource_abstractor_client import app_operations, cluster_operations, job_operations
+from resource_abstractor_client import app_operations, cluster_operations, job_operations
 from requests import post
 
 def create_network_services_of_app(application):
