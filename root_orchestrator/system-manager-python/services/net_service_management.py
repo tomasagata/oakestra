@@ -1,13 +1,16 @@
 
 import io
+import logging
 import re
 import yaml
 from resource_abstractor_client import app_operations, cluster_operations, job_operations
 from requests import post
 
 def create_network_services_of_app(application):
+    logging.debug(f"Creating network service for application {application['applicationID']}")
     microservices = job_operations.get_jobs_of_application(application['applicationID'])
     net_service = application['net_service']
+    logging.debug(f"Network service definition: {net_service}")
     
     # Obtain list of application functions from microservices by extracting `ns_ref` property
     net_service['application-functions'] = []
@@ -19,25 +22,34 @@ def create_network_services_of_app(application):
             'instance-id': ns_ref,
             'af-version': '1.0'
         }
+        logging.debug(f"Adding application function details: {af_details}")
         net_service['application-functions'].append(af_details)
     
     # Resolve the cluster id based on its name
+    logging.debug(f"Resolving cluster for network service: {net_service.get('cluster')}")
     cluster_name = net_service.get('cluster')
-    if cluster_name is None: return {
-        "message": "missing property 'cluster' on network service definition"
-    }, 400
-    cluster_data = cluster_operations.get_resource_by_name(cluster_name)
+    if cluster_name is None: 
+        logging.error("Missing 'cluster' property in network service definition")
+        return {
+            "message": "missing property 'cluster' on network service definition"
+        }, 400
 
-    if cluster_data is None: return {
-        "message": f"unable to get cluster named '{cluster_name}'" 
-    }, 404
+    logging.debug(f"Getting cluster data for {cluster_name}")
+    cluster_data = cluster_operations.get_resource_by_name(cluster_name)
+    if cluster_data is None: 
+        logging.error(f"Cluster {cluster_name} not found")
+        return {
+            "message": f"unable to get cluster named '{cluster_name}'" 
+        }, 404
 
     # Save the network service in the database
+    logging.debug(f"Storing network service in database")
     ns_id = store_net_service(net_service)
-
-    if ns_id is None: return {
-        "message": f"unable to store network service in database" 
-    }, 500
+    if ns_id is None: 
+        logging.error(f"Failed to store network service in database")
+        return {
+            "message": f"unable to store network service in database" 
+        }, 500
 
     net_service['id'] = ns_id
     return send_net_service_to_cluster(net_service, cluster_data)

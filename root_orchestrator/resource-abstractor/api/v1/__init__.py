@@ -4,6 +4,7 @@ from api.v1 import (
     hooks_blueprint,
     jobs_blueprint,
     resources_blueprint,
+    netservices_blueprint,
 )
 
 blueprints = [
@@ -12,4 +13,5 @@ blueprints = [
     jobs_blueprint.jobsblp,
     hooks_blueprint.hooksblp,
     custom_resources_blueprint.customblp,
+    netservices_blueprint.netservicesblp,
 ]

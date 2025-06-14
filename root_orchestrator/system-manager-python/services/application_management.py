@@ -69,7 +69,6 @@ def register_app(applications, userid):
 
         try:
             result, status = create_network_services_of_app(
-                userid,
                 application
             )
             if status != 200:
