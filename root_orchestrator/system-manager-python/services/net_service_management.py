@@ -18,8 +18,8 @@ def create_network_services_of_app(application):
         ns_ref = microservice.get('ns_ref')
         if not ns_ref: continue
         af_details = {
-            'id': microservice['microserviceID'],
-            'instance-id': ns_ref,
+            'af-id': microservice['microserviceID'],
+            'af-instance-id': ns_ref,
             'af-version': '1.0'
         }
         logging.debug(f"Adding application function details: {af_details}")
