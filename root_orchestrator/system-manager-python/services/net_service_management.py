@@ -51,12 +51,12 @@ def create_network_services_of_app(application):
             "message": f"unable to store network service in database" 
         }, 500
 
-    net_service['id'] = ns_id
+    net_service['id'] = str(ns_id)
     return send_net_service_to_cluster(net_service, cluster_data)
 
 def store_net_service(ns):
     net_service = create_netservice(ns)
-    return str(net_service.get('_id'))
+    return net_service.get('_id')
 
 def delete_net_service(net_service):
     ns_id = net_service.get('id')
