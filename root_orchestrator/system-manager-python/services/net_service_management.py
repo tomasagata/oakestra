@@ -96,7 +96,7 @@ def send_net_service_to_cluster(net_service, cluster_data):
     
     if response.status_code != 200: return {
         "message": f"error when sending network service descriptor to IML" 
-    }
+    }, 500
     return None, 200
 
 def delete_net_service_from_cluster(ns_id, cluster_data):
