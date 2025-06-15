@@ -1,22 +1,25 @@
+from email.policy import default
+
+
 ns_schema = {
     "type": "object",
     "properties": {
         "nsID": {"type": "string"},
-        "ns_name": {"type": "string"},
-        "ns_desc": {"type": "string"},
+        "ns_name": {"type": "string", "default": ""},
+        "ns_desc": {"type": "string", "default": ""},
         "cluster": {"type": "string"},
         "forwarding_graphs": {
             "type": "array",
             "items": {
                 "type": "object",
                 "properties": {
-                    "graph_name": {"type": "string"},
+                    "graph_name": {"type": "string", "default": ""},
                     "links": {
                         "type": "array",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "linkID": {"type": "string"},
+                                "linkID": {"type": "string", "default": ""},
                                 "connection_points": {
                                     "type": "array",
                                     "items": {
@@ -24,19 +27,19 @@ ns_schema = {
                                         "properties": {
                                             "microservice_ref": {"type": "string"},
                                         },
-                                        "required": []
+                                        "required": ["microservice_ref"],
                                     }
                                 }
                             },
-                            "required": []
+                            "required": ["connection_points"],
                         }
                     }
                 },
-                "required": []
+                "required": ["links"]
             }
         }
     },
-    "required": []
+    "required": ["cluster", "forwarding_graphs"],
 }
 
 sla_schema = {
