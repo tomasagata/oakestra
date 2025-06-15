@@ -102,8 +102,8 @@ def delete_app(appid, userid):
     for service_id in application.get("microservices"):
         delete_service(userid, service_id)
 
-    net_service_id = application.get('net_service')
-    if net_service_id: delete_net_service(net_service_id)
+    net_service = application.get('net_service')
+    if net_service: delete_net_service(net_service)
 
     return app_operations.delete_app(appid)
 

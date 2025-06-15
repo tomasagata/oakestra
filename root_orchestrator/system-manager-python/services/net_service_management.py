@@ -58,21 +58,26 @@ def store_net_service(ns):
     net_service = create_netservice(ns)
     return net_service.get('_id')
 
-def delete_net_service(net_service_id):
-    net_service = get_netservice_by_id(net_service_id)
-    if net_service is None: return {
+def delete_net_service(net_service):
+    ns_id = net_service.get('id')
+    if ns_id is None: return {
         "message": f"network service not found" 
     }, 404
 
-    cluster_data = cluster_operations.get_resource_by_name(net_service['cluster'])
+    ns_data = get_netservice_by_id(ns_id)
+    if ns_data is None: return {
+        "message": f"network service not found" 
+    }, 404
+
+    cluster_data = cluster_operations.get_resource_by_name(ns_data['cluster'])
     if cluster_data is None: return {
         "message": f"cluster not found" 
     }, 500
 
-    response, status = delete_net_service_from_cluster(net_service, cluster_data)
+    response, status = delete_net_service_from_cluster(ns_id, cluster_data)
     if status != 200: return response, status
 
-    response = delete_netservice(net_service_id)
+    response = delete_netservice(ns_id)
     if response is None: return None, 500
     return response, 200
 
@@ -94,23 +99,18 @@ def send_net_service_to_cluster(net_service, cluster_data):
     }
     return None, 200
 
-def delete_net_service_from_cluster(net_service, cluster_data):
-    net_service_yaml = yaml.dump(net_service)
+def delete_net_service_from_cluster(ns_id, cluster_data):
 
-    file_obj = io.BytesIO(net_service_yaml.encode('utf-8'))
-    file_obj.name = 'nsd.yml'  # Simulate a real file name
-
-    # Send POST request with the file
-    files = {'file': (file_obj.name, file_obj, 'application/x-yaml')}
-    response = post(
-        f"http://{cluster_data['cluster_ip']}:5000/iml/yaml/deploy/", 
-        files=files
+    # Send DELETE request with the network service ID
+    response = delete(
+        f"http://{cluster_data['cluster_ip']}:5000/iml/yaml/deploy/{ns_id}"
     )
     
-    if response.status_code != 200: return {
+    if not response.ok: return {
         "message": f"error when sending network service descriptor to IML" 
-    }
-    return None, 200
+    }, 500
+
+    return response.text, response.status_code
 
 
 # =========== netservice_operations ===========
