@@ -82,9 +82,15 @@ def delete_net_service(net_service):
     return response, 200
 
 def send_net_service_to_cluster(net_service, cluster_data):
-    net_service_yaml = yaml.dump(net_service)
+    lnsd = {
+        "lnsd": {
+            "ns": net_service,
+        } 
+    }
 
-    file_obj = io.BytesIO(net_service_yaml.encode('utf-8'))
+    lnsd_yaml = yaml.dump(lnsd)
+
+    file_obj = io.BytesIO(lnsd_yaml.encode('utf-8'))
     file_obj.name = 'nsd.yml'  # Simulate a real file name
 
     # Send POST request with the file
