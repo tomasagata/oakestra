@@ -90,7 +90,7 @@ def send_net_service_to_cluster(net_service, cluster_data):
     # Send POST request with the file
     files = {'file': (file_obj.name, file_obj, 'application/x-yaml')}
     response = post(
-        f"http://{cluster_data['ip']}:30050/iml/yaml/deploy/", 
+        f"http://{cluster_data['ip']}:30050/iml/yaml/deploy", 
         files=files
     )
     
