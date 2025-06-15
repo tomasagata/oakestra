@@ -56,7 +56,7 @@ def create_network_services_of_app(application):
 
 def store_net_service(ns):
     net_service = create_netservice(ns)
-    return net_service.get('_id')
+    return str(net_service.get('_id'))
 
 def delete_net_service(net_service):
     ns_id = net_service.get('id')
