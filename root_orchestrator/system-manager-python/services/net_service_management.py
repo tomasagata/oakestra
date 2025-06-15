@@ -90,7 +90,7 @@ def send_net_service_to_cluster(net_service, cluster_data):
     # Send POST request with the file
     files = {'file': (file_obj.name, file_obj, 'application/x-yaml')}
     response = post(
-        f"http://{cluster_data['cluster_ip']}:5000/iml/yaml/deploy/", 
+        f"http://{cluster_data['ip']}:5000/iml/yaml/deploy/", 
         files=files
     )
     
@@ -103,7 +103,7 @@ def delete_net_service_from_cluster(ns_id, cluster_data):
 
     # Send DELETE request with the network service ID
     response = delete(
-        f"http://{cluster_data['cluster_ip']}:5000/iml/yaml/deploy/{ns_id}"
+        f"http://{cluster_data['ip']}:5000/iml/yaml/deploy/{ns_id}"
     )
     
     if not response.ok: return {
