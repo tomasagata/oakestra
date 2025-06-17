@@ -2,16 +2,22 @@
 import io
 import logging
 import re
+from flask import app
 import yaml
 from resource_abstractor_client import app_operations, cluster_operations, job_operations
 from requests import post
 
-def create_network_services_of_app(application):
-    logging.debug(f"Creating network service for application {application['applicationID']}")
-    microservices = job_operations.get_jobs_of_application(application['applicationID'])
+def create_network_services_of_app(user_id, application):
+    app_id = application["applicationID"]
     net_service = application['net_service']
-    logging.debug(f"Network service definition: {net_service}")
-    
+
+    # Get the microservices of the application
+    microservices = job_operations.get_jobs_of_application(app_id)
+    if microservices is None:
+        return {
+            "message": f"unable to get microservices for application {app_id}"
+        }, 500
+
     # Obtain list of application functions from microservices by extracting `ns_ref` property
     net_service['application-functions'] = []
     for microservice in microservices:
@@ -22,64 +28,63 @@ def create_network_services_of_app(application):
             'af-instance-id': ns_ref,
             'af-version': '1.0'
         }
-        logging.debug(f"Adding application function details: {af_details}")
         net_service['application-functions'].append(af_details)
-    
-    # Resolve the cluster id based on its name
-    logging.debug(f"Resolving cluster for network service: {net_service.get('cluster')}")
+
+    # Get the cluster name from the network service definition
     cluster_name = net_service.get('cluster')
     if cluster_name is None: 
-        logging.error("Missing 'cluster' property in network service definition")
         return {
             "message": "missing property 'cluster' on network service definition"
         }, 400
 
-    logging.debug(f"Getting cluster data for {cluster_name}")
+    # Use the cluster name to get the cluster data
     cluster_data = cluster_operations.get_resource_by_name(cluster_name)
     if cluster_data is None: 
-        logging.error(f"Cluster {cluster_name} not found")
         return {
             "message": f"unable to get cluster named '{cluster_name}'" 
         }, 404
-
-    # Save the network service in the database
-    logging.debug(f"Storing network service in database")
-    ns_id = store_net_service(net_service)
-    if ns_id is None: 
-        logging.error(f"Failed to store network service in database")
+    
+    # Send the network service descriptor to the cluster
+    # The network service descriptor is a YAML file that contains the network service definition
+    # The file is sent to the cluster using a POST request to the IML API
+    # The IML API is running on port 30050 of the cluster
+    ns_id = send_net_service_to_cluster(net_service, cluster_data)
+    if ns_id is None:
         return {
-            "message": f"unable to store network service in database" 
+            "message": f"error when sending network service descriptor to IML"
         }, 500
 
-    net_service['id'] = str(ns_id)
-    return send_net_service_to_cluster(net_service, cluster_data)
+    # Save the network service in the database
+    json_response = app_operations.update_app(app_id, user_id, {
+        "net_service": {
+            "nsID": ns_id, 
+            "cluster": cluster_name
+        }
+    })
+    if json_response is None:
+        return {
+            "message": f"error when updating application with network service ID"
+        }, 500
 
-def store_net_service(ns):
-    net_service = create_netservice(ns)
-    return net_service.get('_id')
+    return None, 200
 
 def delete_net_service(net_service):
-    ns_id = net_service.get('id')
+    ns_id = net_service.get('nsID')
     if ns_id is None: return {
-        "message": f"network service not found" 
-    }, 404
+        "message": f"missing property 'nsID' on network service definition" 
+    }, 500
 
-    ns_data = get_netservice_by_id(ns_id)
-    if ns_data is None: return {
-        "message": f"network service not found" 
-    }, 404
+    cluster_name = net_service.get('cluster')
+    if cluster_name is None: return {
+        "message": f"missing property 'cluster' on network service definition" 
+    }, 500
 
-    cluster_data = cluster_operations.get_resource_by_name(ns_data['cluster'])
+    cluster_data = cluster_operations.get_resource_by_name(cluster_name)
     if cluster_data is None: return {
         "message": f"cluster not found" 
     }, 500
 
-    response, status = delete_net_service_from_cluster(ns_id, cluster_data)
-    if status != 200: return response, status
-
-    response = delete_netservice(ns_id)
-    if response is None: return None, 500
-    return response, 200
+    return delete_net_service_from_cluster(ns_id, cluster_data)
 
 def send_net_service_to_cluster(net_service, cluster_data):
     lnsd = {
@@ -99,11 +104,21 @@ def send_net_service_to_cluster(net_service, cluster_data):
         f"http://{cluster_data['ip']}:30050/iml/yaml/deploy", 
         files=files
     )
+    if not response.ok: 
+        return None
+
+    # Extract the network service ID from the response
+    try:
+        response_data = response.json()
+        ns_id = response_data.get('id')
+        if not ns_id:
+            logging.error("Network service ID not found in response")
+            return None
+    except ValueError:
+        logging.error("Invalid JSON response from IML")
+        return None
     
-    if response.status_code != 200: return {
-        "message": f"error when sending network service descriptor to IML" 
-    }, 500
-    return None, 200
+    return ns_id
 
 def delete_net_service_from_cluster(ns_id, cluster_data):
 
@@ -114,7 +129,7 @@ def delete_net_service_from_cluster(ns_id, cluster_data):
     
     if not response.ok: return {
         "message": f"error when sending network service descriptor to IML" 
-    }, 500
+    }, response.status_code
 
     return response.text, response.status_code
 

@@ -33,7 +33,9 @@ def register_app(applications, userid):
 
         application["userId"] = userid
         microservices = application.get("microservices")
+        net_service = application.get("net_service")
         application["microservices"] = []
+        application["net_service"] = None
 
         app = app_operations.create_app(userid, application)
         if app is None:
@@ -64,11 +66,12 @@ def register_app(applications, userid):
             delete_app(app_id, userid)
             return {"message": "error during the registration of the microservices"}, 500
         
-        net_service = app.get("net_service")
         if not net_service: continue
 
         try:
+            application["net_service"] = net_service
             result, status = create_network_services_of_app(
+                userid,
                 application
             )
             if status != 200:
@@ -103,7 +106,8 @@ def delete_app(appid, userid):
         delete_service(userid, service_id)
 
     net_service = application.get('net_service')
-    if net_service: delete_net_service(net_service)
+    if net_service is not None: 
+        delete_net_service(net_service)
 
     return app_operations.delete_app(appid)
 
