@@ -1,15 +1,14 @@
 
-import io
 import logging
-import re
 from flask import app
-import yaml
 from resource_abstractor_client import app_operations, cluster_operations, job_operations
 from requests import post
 
 def create_network_services_of_app(user_id, application):
     app_id = application["applicationID"]
     net_service = application['net_service']
+    nsd = dict()
+    aliases = dict()
 
     # Get the microservices of the application
     microservices = job_operations.get_jobs_of_application(app_id)
@@ -19,16 +18,87 @@ def create_network_services_of_app(user_id, application):
         }, 500
 
     # Obtain list of application functions from microservices by extracting `ns_ref` property
-    net_service['application-functions'] = []
+    nsd['application-functions'] = []
     for microservice in microservices:
         ns_ref = microservice.get('ns_ref')
         if not ns_ref: continue
+        # if alias already exists, return error
+        if aliases.get(ns_ref, None) is not None:
+            return {
+                "message": f"duplicate alias '{ns_ref}' found"
+            }, 400
         af_details = {
-            'af-id': microservice['microserviceID'],
-            'af-instance-id': ns_ref,
-            'af-version': '1.0'
+            'id': microservice['microserviceID'],
+            'name': microservice['name'],
+            'namespace': microservice.get('namespace', 'default'),
         }
-        net_service['application-functions'].append(af_details)
+        aliases[ns_ref] = af_details
+        nsd['application-functions'].append(af_details)
+    
+    network_functions = net_service.get('functions', [])
+    nsd['network-functions'] = []
+    for nf in network_functions:
+        if nf.get('ns_ref') is None:
+            return {
+                "message": "missing property 'ns_ref' on network function definition"
+            }, 400
+        ns_ref = nf['ns_ref']
+        if aliases.get(ns_ref) is not None:
+            return {
+                "message": f"duplicate alias '{ns_ref}' found"
+            }, 400
+        nf_details = {
+            'name': nf['name'],
+            'namespace': nf.get('namespace', 'default'),
+            'image': nf.get('image', ''),
+        }
+        aliases[ns_ref] = nf_details
+        nsd['network-functions'].append(nf_details)
+
+    service_chains = net_service.get('service_chains', [])
+    nsd['service-chains'] = []
+    for sc in service_chains:
+        if sc.get('chain_name') is None:
+            return {
+                "message": "missing property 'chain_name' on service chain definition"
+            }, 400
+        if sc.get('from') is None:
+            return {
+                "message": "missing property 'from' on service chain definition"
+            }, 400
+        if sc.get('to') is None:
+            return {
+                "message": "missing property 'to' on service chain definition"
+            }, 400
+
+        # Validate that all aliases used in the service chain are defined
+        for alias in [sc['from'], sc['to']] + sc.get('intermediate_functions', []):
+            if aliases.get(alias) is None:
+                return {
+                    "message": f"undefined alias '{alias}' used in service chain '{sc['chain_name']}'"
+                }, 400
+
+        from_af_details = aliases[sc['from']]
+        to_af_details = aliases[sc['to']]
+        intermediate_function_details = [{
+            'name': aliases[alias]['name'],
+            'namespace': aliases[alias]['namespace'],
+        } for alias in sc.get('intermediate_functions', [])]
+
+        sc_details = {
+            'name': sc['chain_name'],
+            'namespace': sc.get('chain_namespace', 'default'),
+            'from': {
+                'name': from_af_details['name'],
+                'namespace': from_af_details['namespace'],
+            },
+            'to': {
+                'name': to_af_details['name'],
+                'namespace': to_af_details['namespace'],
+            },
+            'intermediate_functions': intermediate_function_details,
+        }
+        nsd['service-chains'].append(sc_details)
 
     # Get the cluster name from the network service definition
     cluster_name = net_service.get('cluster')
@@ -48,7 +118,7 @@ def create_network_services_of_app(user_id, application):
     # The network service descriptor is a YAML file that contains the network service definition
     # The file is sent to the cluster using a POST request to the IML API
     # The IML API is running on port 30050 of the cluster
-    ns_id = send_net_service_to_cluster(net_service, cluster_data)
+    ns_id = send_nsd_to_cluster(nsd, cluster_data)
     if ns_id is None:
         return {
             "message": f"error when sending network service descriptor to IML"
@@ -86,23 +156,10 @@ def delete_net_service(net_service):
 
     return delete_net_service_from_cluster(ns_id, cluster_data)
 
-def send_net_service_to_cluster(net_service, cluster_data):
-    lnsd = {
-        "lnsd": {
-            "ns": net_service,
-        } 
-    }
-
-    lnsd_yaml = yaml.dump(lnsd)
-
-    file_obj = io.BytesIO(lnsd_yaml.encode('utf-8'))
-    file_obj.name = 'nsd.yml'  # Simulate a real file name
-
-    # Send POST request with the file
-    files = {'file': (file_obj.name, file_obj, 'application/x-yaml')}
+def send_nsd_to_cluster(nsd, cluster_data):
     response = post(
-        f"http://{cluster_data['ip']}:30050/iml/yaml/deploy", 
-        files=files
+        f"http://{cluster_data['ip']}:30050/api/v1/agent/nsd",
+        json=nsd
     )
     if not response.ok: 
         return None
@@ -124,7 +181,7 @@ def delete_net_service_from_cluster(ns_id, cluster_data):
 
     # Send DELETE request with the network service ID
     response = delete(
-        f"http://{cluster_data['ip']}:30050/iml/yaml/deploy/{ns_id}"
+        f"http://{cluster_data['ip']}:30050/api/v1/agent/nsd/{ns_id}"
     )
     
     if not response.ok: return {

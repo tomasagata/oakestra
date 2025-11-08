@@ -8,38 +8,38 @@ ns_schema = {
         "ns_name": {"type": "string", "default": ""},
         "ns_desc": {"type": "string", "default": ""},
         "cluster": {"type": "string"},
-        "forwarding_graphs": {
+        "functions": {
             "type": "array",
             "items": {
                 "type": "object",
                 "properties": {
-                    "graph_name": {"type": "string", "default": ""},
-                    "links": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "linkID": {"type": "string", "default": ""},
-                                "connection_points": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "microservice_ref": {"type": "string"},
-                                        },
-                                        "required": ["microservice_ref"],
-                                    }
-                                }
-                            },
-                            "required": ["connection_points"],
-                        }
-                    }
+                    "function_name": {"type": "string", "default": ""},
+                    "function_namespace": {"type": "string", "default": "default"},
+                    "image": {"type": "string", "default": ""},
+                    "ns_ref": {"type": "string", "default": ""},
                 },
-                "required": ["links"]
+                "required": ["function_name", "function_namespace", "image", "ns_ref"],
+            }
+        },
+        "service_chains": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "chain_name": {"type": "string"},
+                    "chain_namespace": {"type": "string", "default": "default"},
+                    "from": {"type": "string"},
+                    "to": {"type": "string"},
+                    "intermediate_functions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+                "required": ["chain_name", "from", "to"],
             }
         }
     },
-    "required": ["cluster", "forwarding_graphs"],
+    "required": ["cluster", "service_chains"],
 }
 
 sla_schema = {
@@ -198,7 +198,7 @@ sla_schema = {
                         },
                         "exclusiveMinimum": 0,
                     },
-                    "network_service": ns_schema,
+                    "net_service": ns_schema,
                 },
                 "required": [
                     "application_name",
