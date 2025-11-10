@@ -2,7 +2,7 @@ from email.policy import default
 
 
 ns_schema = {
-    "type": "object",
+    "type": ["object", "null"],
     "properties": {
         "nsID": {"type": "string"},
         "ns_name": {"type": "string", "default": ""},

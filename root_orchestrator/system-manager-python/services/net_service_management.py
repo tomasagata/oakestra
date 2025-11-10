@@ -29,8 +29,8 @@ def create_network_services_of_app(user_id, application):
             }, 400
         af_details = {
             'id': microservice['microserviceID'],
-            'name': microservice['name'],
-            'namespace': microservice.get('namespace', 'default'),
+            'name': microservice['microservice_name'],
+            'namespace': microservice.get('microservice_namespace', 'default'),
         }
         aliases[ns_ref] = af_details
         nsd['application-functions'].append(af_details)
@@ -48,8 +48,8 @@ def create_network_services_of_app(user_id, application):
                 "message": f"duplicate alias '{ns_ref}' found"
             }, 400
         nf_details = {
-            'name': nf['name'],
-            'namespace': nf.get('namespace', 'default'),
+            'name': nf['function_name'],
+            'namespace': nf.get('function_namespace', 'default'),
             'image': nf.get('image', ''),
         }
         aliases[ns_ref] = nf_details
