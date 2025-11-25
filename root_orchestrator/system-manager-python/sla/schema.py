@@ -15,10 +15,34 @@ ns_schema = {
                 "properties": {
                     "function_name": {"type": "string", "default": ""},
                     "function_namespace": {"type": "string", "default": "default"},
-                    "image": {"type": "string", "default": ""},
-                    "ns_ref": {"type": "string", "default": ""},
+                    "type": {"type": "string", "default": "simple"},
+                    "containers": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "image": {"type": "string"},
+                                "command": {"type": ["array", "null"], "items": {"type": "string"}},
+                                "args": {"type": ["array", "null"], "items": {"type": "string"}},
+                            },
+                            "required": ["name", "image"],
+                        },
+                    },
+                    "ns_ref": {"type": "string"},
+                    "subfunctions": {
+                        "type": ["array", "null"],
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string", "default": ""},
+                                "id": {"type": "integer"},
+                            },
+                            "required": ["id"],
+                        }
+                    }
                 },
-                "required": ["function_name", "function_namespace", "image", "ns_ref"],
+                "required": ["function_name", "function_namespace", "containers", "ns_ref"],
             }
         },
         "service_chains": {

@@ -74,6 +74,7 @@ def register_app(applications, userid):
                 userid,
                 application
             )
+            logging.getLogger("system_manager").info(f"Network service creation result: {result}, status: {status}")
             if status != 200:
                 delete_app(app_id, userid)
                 return result, status
