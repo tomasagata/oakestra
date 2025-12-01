@@ -1,39 +1,158 @@
-
-import logging
-from flask import app
+from http import HTTPStatus
 from resource_abstractor_client import app_operations, cluster_operations, job_operations
 from requests import post
 
-def create_network_services_of_app(user_id, application):
+def create_network_services_of_app(user_id, application) -> tuple[dict, HTTPStatus]:
     app_id = application["applicationID"]
     net_service = application['net_service']
-    nsd = dict()
-    aliases = dict()
 
     # Get the microservices of the application
     microservices = job_operations.get_jobs_of_application(app_id)
     if microservices is None:
         return {
             "message": f"unable to get microservices for application {app_id}"
-        }, 500
+        }, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    try:
+        nsd = create_nsd_from_net_service(net_service, microservices)
+    except ValueError as e:
+        return {
+            "message": f"error when creating network service descriptor from network service definition: {str(e)}"
+        }, HTTPStatus.BAD_REQUEST
+
+    # Get the cluster name from the network service definition
+    cluster_name = net_service.get('cluster')
+    if cluster_name is None: 
+        return {
+            "message": "missing property 'cluster' on network service definition"
+        }, HTTPStatus.BAD_REQUEST
+
+    # Use the cluster name to get the cluster data
+    cluster_data = cluster_operations.get_resource_by_name(cluster_name)
+    if cluster_data is None: 
+        return {
+            "message": f"unable to get cluster named '{cluster_name}'" 
+        }, HTTPStatus.NOT_FOUND
+    
+    # Send the network service descriptor to the cluster
+    # The network service descriptor is a YAML file that contains the network service definition
+    # The file is sent to the cluster using a POST request to the IML API
+    # The IML API is running on port 30050 of the cluster
+    try:
+        send_nsd_to_cluster(nsd, cluster_data)
+    except Exception as e:
+        return {
+            "message": f"error when sending network service descriptor to IML: {str(e)}"
+        }, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    # Save the network service in the database
+    json_response = app_operations.update_app(app_id, user_id, {
+        "net_service": net_service
+    })
+    if json_response is None:
+        return {
+            "message": f"error when updating application with network service ID"
+        }, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    return {"message": "Network service created successfully"}, HTTPStatus.OK
+
+def delete_network_services_of_app(net_service, app_id) -> tuple[dict, HTTPStatus]:
+    microservices = job_operations.get_jobs_of_application(app_id)
+    if microservices is None: return {
+        "message": f"unable to get microservices for application {app_id}"
+    }, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    try:
+        nsd = create_nsd_from_net_service(net_service, microservices)
+    except ValueError as e:
+        return {
+            "message": f"error when creating network service descriptor from network service definition: {str(e)}"
+        }, HTTPStatus.BAD_REQUEST
+
+    cluster_name = net_service.get('cluster')
+    if cluster_name is None: return {
+        "message": f"missing property 'cluster' on network service definition" 
+    }, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    cluster_data = cluster_operations.get_resource_by_name(cluster_name)
+    if cluster_data is None: return {
+        "message": f"cluster not found" 
+    }, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    try:
+        delete_net_service_from_cluster(nsd, cluster_data)
+    except Exception as e:
+        return {
+            "message": f"error when deleting network service from IML: {str(e)}"
+        }, HTTPStatus.INTERNAL_SERVER_ERROR
+    
+    return {"message": "Network service deleted successfully"}, HTTPStatus.OK
+
+def send_nsd_to_cluster(nsd, cluster_data):
+    response = post(
+        f"http://{cluster_data['ip']}:30050/api/v1/agent/nsd/deploy",
+        json=nsd
+    )
+    if not response.ok: 
+        raise Exception(f"{response.text}")
+    
+    return response.text, response.status_code
+
+def delete_net_service_from_cluster(nsd, cluster_data):
+    # Send POST request with the network service descriptor to delete it
+    response = post(
+        f"http://{cluster_data['ip']}:30050/api/v1/agent/nsd/delete", 
+        json=nsd
+    )
+    if not response.ok: 
+        raise Exception(f"{response.text}")
+
+    return response.text, response.status_code
+
+
+# =========== netservice_operations ===========
+
+from requests import delete, get
+from resource_abstractor_client.client_helper import make_request
+
+NETSERVICES_API = "/api/v1/netservices"
+
+
+def get_netservice_by_id(ns_id):
+    request_address = f"{NETSERVICES_API}/{ns_id}"
+    return make_request(get, request_address)
+
+
+def create_netservice(data):
+    return make_request(post, NETSERVICES_API, json=data)
+
+
+def delete_netservice(ns_id):
+    request_address = f"{NETSERVICES_API}/{ns_id}"
+    return make_request(delete, request_address)
+
+# =========== nsd creation helpers ===========
+
+def create_nsd_from_net_service(net_service, microservices):
+    nsd = dict()
+    aliases = dict()
 
     # Obtain list of application functions from microservices by extracting `ns_ref` property
     nsd['application-functions'] = []
     for microservice in microservices:
-        ns_ref = microservice.get('ns_ref')
-        if not ns_ref: continue
-        # if alias already exists, return error
-        if aliases.get(ns_ref, None) is not None:
-            return {
-                "message": f"duplicate alias '{ns_ref}' found"
-            }, 400
         af_details = {
             'id': microservice['microserviceID'],
             'name': microservice['microservice_name'],
             'namespace': microservice.get('microservice_namespace', 'default'),
         }
-        aliases[ns_ref] = af_details
         nsd['application-functions'].append(af_details)
+
+        ns_ref = microservice.get('ns_ref')
+        if ns_ref is not None:
+            # if alias already exists, return error
+            if aliases.get(ns_ref) is not None:
+                raise ValueError(f"duplicate alias '{ns_ref}' found")
+            aliases[ns_ref] = af_details
     
     network_functions = net_service.get('functions', [])
     nsd['network-functions'] = []
@@ -45,9 +164,7 @@ def create_network_services_of_app(user_id, application):
             containers = parse_containers(nf)
             subfunctions = parse_nf_subfunctions(nf, type)
         except ValueError as e:
-            return {
-                "message": f"error processing network function '{ns_ref}': {str(e)}"
-            }, 400
+            raise ValueError(f"error processing network function '{ns_ref}': {str(e)}")
         nf_details = {
             'name': name,
             'namespace': namespace,
@@ -62,29 +179,19 @@ def create_network_services_of_app(user_id, application):
     nsd['service-chains'] = []
     for sc in service_chains:
         if sc.get('chain_name') is None:
-            return {
-                "message": "missing property 'chain_name' on service chain definition"
-            }, 400
+            raise ValueError("missing property 'chain_name' on service chain definition")
         if sc.get('from') is None:
-            return {
-                "message": "missing property 'from' on service chain definition"
-            }, 400
+            raise ValueError("missing property 'from' on service chain definition")
         if sc.get('to') is None:
-            return {
-                "message": "missing property 'to' on service chain definition"
-            }, 400
+            raise ValueError("missing property 'to' on service chain definition")
         
         from_af_details = aliases.get(sc['from'])
         if from_af_details is None:
-            return {
-                "message": f"undefined alias '{sc['from']}' used in service chain '{sc['chain_name']}'"
-            }, 400
+            raise ValueError(f"undefined alias '{sc['from']}' used in service chain '{sc['chain_name']}'")
         
         to_af_details = aliases.get(sc['to'])
         if to_af_details is None:
-            return {
-                "message": f"undefined alias '{sc['to']}' used in service chain '{sc['chain_name']}'"
-            }, 400
+            raise ValueError(f"undefined alias '{sc['to']}' used in service chain '{sc['chain_name']}'")
         
         intermediate_function_details = []
         for alias in sc.get('intermediate_functions', []):
@@ -118,9 +225,7 @@ def create_network_services_of_app(user_id, application):
                 else:
                     raise ValueError(f"unknown network function type '{nf_details['type']}' for alias '{nf_alias}'")
             except ValueError as e:
-                return {
-                    "message": f"error processing intermediate function alias '{alias}' in service chain '{sc['chain_name']}': {str(e)}"
-                }, 400
+                raise ValueError(f"error processing intermediate function alias '{alias}' in service chain '{sc['chain_name']}': {str(e)}")
 
         sc_details = {
             'name': sc['chain_name'],
@@ -136,118 +241,8 @@ def create_network_services_of_app(user_id, application):
             'functions': intermediate_function_details,
         }
         nsd['service-chains'].append(sc_details)
-
-    # Get the cluster name from the network service definition
-    cluster_name = net_service.get('cluster')
-    if cluster_name is None: 
-        return {
-            "message": "missing property 'cluster' on network service definition"
-        }, 400
-
-    # Use the cluster name to get the cluster data
-    cluster_data = cluster_operations.get_resource_by_name(cluster_name)
-    if cluster_data is None: 
-        return {
-            "message": f"unable to get cluster named '{cluster_name}'" 
-        }, 404
     
-    # Send the network service descriptor to the cluster
-    # The network service descriptor is a YAML file that contains the network service definition
-    # The file is sent to the cluster using a POST request to the IML API
-    # The IML API is running on port 30050 of the cluster
-    ns_id = send_nsd_to_cluster(nsd, cluster_data)
-    if ns_id is None:
-        return {
-            "message": f"error when sending network service descriptor to IML"
-        }, 500
-
-    # Save the network service in the database
-    json_response = app_operations.update_app(app_id, user_id, {
-        "net_service": {
-            "nsID": ns_id, 
-            "cluster": cluster_name
-        }
-    })
-    if json_response is None:
-        return {
-            "message": f"error when updating application with network service ID"
-        }, 500
-
-    return None, 200
-
-def delete_net_service(net_service):
-    ns_id = net_service.get('nsID')
-    if ns_id is None: return {
-        "message": f"missing property 'nsID' on network service definition" 
-    }, 500
-
-    cluster_name = net_service.get('cluster')
-    if cluster_name is None: return {
-        "message": f"missing property 'cluster' on network service definition" 
-    }, 500
-
-    cluster_data = cluster_operations.get_resource_by_name(cluster_name)
-    if cluster_data is None: return {
-        "message": f"cluster not found" 
-    }, 500
-
-    return delete_net_service_from_cluster(ns_id, cluster_data)
-
-def send_nsd_to_cluster(nsd, cluster_data):
-    response = post(
-        f"http://{cluster_data['ip']}:30050/api/v1/agent/nsd",
-        json=nsd
-    )
-    if not response.ok: 
-        return None
-
-    # Extract the network service ID from the response
-    try:
-        response_data = response.json()
-        ns_id = response_data.get('id')
-        if not ns_id:
-            logging.error("Network service ID not found in response")
-            return None
-    except ValueError:
-        logging.error("Invalid JSON response from IML")
-        return None
-    
-    return ns_id
-
-def delete_net_service_from_cluster(ns_id, cluster_data):
-
-    # Send DELETE request with the network service ID
-    response = delete(
-        f"http://{cluster_data['ip']}:30050/api/v1/agent/nsd/{ns_id}"
-    )
-    
-    if not response.ok: return {
-        "message": f"error when sending network service descriptor to IML" 
-    }, response.status_code
-
-    return response.text, response.status_code
-
-
-# =========== netservice_operations ===========
-
-from requests import delete, get
-from resource_abstractor_client.client_helper import make_request
-
-NETSERVICES_API = "/api/v1/netservices"
-
-
-def get_netservice_by_id(ns_id):
-    request_address = f"{NETSERVICES_API}/{ns_id}"
-    return make_request(get, request_address)
-
-
-def create_netservice(data):
-    return make_request(post, NETSERVICES_API, json=data)
-
-
-def delete_netservice(ns_id):
-    request_address = f"{NETSERVICES_API}/{ns_id}"
-    return make_request(delete, request_address)
+    return nsd
 
 def parse_containers(nf_definition):
     containers_def = nf_definition.get('containers')

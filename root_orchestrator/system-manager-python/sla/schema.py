@@ -63,7 +63,7 @@ ns_schema = {
             }
         }
     },
-    "required": ["cluster", "service_chains"],
+    "required": ["cluster"],
 }
 
 sla_schema = {

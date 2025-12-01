@@ -3,7 +3,7 @@ import traceback
 
 from resource_abstractor_client import app_operations
 from services.service_management import create_services_of_app, delete_service
-from services.net_service_management import create_network_services_of_app, delete_net_service
+from services.net_service_management import create_network_services_of_app, delete_network_services_of_app
 from sla.versioned_sla_parser import SLAFormatError, parse_sla_json
 
 
@@ -18,7 +18,8 @@ def register_app(applications, userid):
     try:
         parse_sla_json(applications)
     except SLAFormatError as e:
-        return {"message": e}, 422
+        logging.getLogger("system_manager").error(f"SLA format error: {e}")
+        return {"message": str(e)}, 422
 
     for application in applications["applications"]:
         if app_operations.get_app_by_name_and_namespace(
@@ -33,7 +34,7 @@ def register_app(applications, userid):
 
         application["userId"] = userid
         microservices = application.get("microservices")
-        net_service = application.get("net_service")
+        net_service = application.get("net_service", {})
         application["microservices"] = []
         application["net_service"] = None
 
@@ -66,8 +67,6 @@ def register_app(applications, userid):
             delete_app(app_id, userid)
             return {"message": "error during the registration of the microservices"}, 500
         
-        if not net_service: continue
-
         try:
             application["net_service"] = net_service
             result, status = create_network_services_of_app(
@@ -103,12 +102,14 @@ def delete_app(appid, userid):
         logging.warn(f"Application {appid} not found")
         return None
 
+    net_service = application.get('net_service')
+    if net_service is not None:
+        result, status = delete_network_services_of_app(net_service, appid)
+        if status != 200:
+            logging.error(f"Error deleting network services of application {appid}: {result}")
+
     for service_id in application.get("microservices"):
         delete_service(userid, service_id)
-
-    net_service = application.get('net_service')
-    if net_service is not None: 
-        delete_net_service(net_service)
 
     return app_operations.delete_app(appid)
 
